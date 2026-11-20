@@ -46,7 +46,15 @@ window.__ModuleLoader__.load({
         updated: '已更新',
         deleted: '已删除',
         invalidTime: '请选择有效的时间',
-        needMilk: '母乳和奶粉量至少填一项',
+        needFeed: '母乳、奶粉或亲喂时长至少填一项',
+        nurseMin: '亲喂时长（分钟）',
+        nurseShort: '亲喂',
+        nurseHint: '亲喂时只填时长即可，母乳/奶粉的 ml 可以留空',
+        side: '侧别',
+        sideLeft: '左',
+        sideRight: '右',
+        sideBoth: '双',
+        minutes: '分钟',
         needWeight: '请输入体重',
         needDiaper: '小便或大便次数至少填一项',
         feed: '喂奶',
@@ -107,7 +115,7 @@ window.__ModuleLoader__.load({
         periodTrend: '喂养时段分布',
         supplementTrend: '补充剂打卡',
         weightHint: '每次称重都会连成一条成长曲线',
-        milkHint: '母乳 + 奶粉，按天叠加',
+        milkHint: '母乳 + 奶粉按天叠加；亲喂按分钟单独记录，不计入 ml',
         todayLabel: '今日',
         milkAverageLabel: '日均',
         milkAverageHint: '按有记录的天数计算',
@@ -169,7 +177,15 @@ window.__ModuleLoader__.load({
         updated: 'Updated',
         deleted: 'Deleted',
         invalidTime: 'Choose a valid time',
-        needMilk: 'Enter breast milk or formula',
+        needFeed: 'Enter milk, formula, or nursing minutes',
+        nurseMin: 'Nursing (minutes)',
+        nurseShort: 'Nursing',
+        nurseHint: 'For direct nursing, just enter minutes; ml can stay empty',
+        side: 'Side',
+        sideLeft: 'Left',
+        sideRight: 'Right',
+        sideBoth: 'Both',
+        minutes: 'min',
         needWeight: 'Enter a weight',
         needDiaper: 'Enter pee or poop',
         feed: 'Feeding',
@@ -230,7 +246,7 @@ window.__ModuleLoader__.load({
         periodTrend: 'Feeding by time of day',
         supplementTrend: 'Supplement check-ins',
         weightHint: 'Every weigh-in joins the growth curve',
-        milkHint: 'Breast milk + formula, stacked per day',
+        milkHint: 'Breast milk + formula stacked per day; nursing minutes are tracked separately',
         todayLabel: 'Today',
         milkAverageLabel: 'Daily avg',
         milkAverageHint: 'Averaged over days with records',
@@ -320,15 +336,24 @@ window.__ModuleLoader__.load({
     }
 
     /** 上次喂奶的量：单一时显示「奶粉 90 ml」，混合时显示「母乳 60 + 奶粉 90 (150 ml)」。 */
+    function sideText(side, t) {
+      if (side === 'left') return t('sideLeft')
+      if (side === 'right') return t('sideRight')
+      if (side === 'both') return t('sideBoth')
+      return ''
+    }
+
     function feedAmountText(entry, t) {
       const pieces = []
       if (entry.breastMl > 0) pieces.push(t('breastMilk') + ' ' + entry.breastMl)
       if (entry.formulaMl > 0) pieces.push(t('formula') + ' ' + entry.formulaMl)
-      if (pieces.length === 0) return ''
-      const total = entry.breastMl + entry.formulaMl
-      return pieces.length > 1
-        ? pieces.join(' + ') + ' (' + total + ' ml)'
-        : pieces[0] + ' ml'
+      const bottle = pieces.length > 0
+        ? (pieces.length > 1 ? pieces.join(' + ') + ' (' + (entry.breastMl + entry.formulaMl) + ' ml)' : pieces[0] + ' ml')
+        : ''
+      if (!(entry.nurseMin > 0)) return bottle
+      const side = sideText(entry.side, t)
+      const nurse = t('nurseShort') + ' ' + entry.nurseMin + ' ' + t('minutes') + (side ? '（' + side + '）' : '')
+      return bottle ? bottle + ' + ' + nurse : nurse
     }
 
     /** 上次喂奶的显示时间：今天只显示时:分，昨天带“昨天”，更早带月/日。 */
@@ -417,7 +442,7 @@ window.__ModuleLoader__.load({
         const date = new Date()
         date.setHours(0, 0, 0, 0)
         date.setDate(date.getDate() - offset)
-        const row = { key: dateKeyOf(date), date, breast: 0, formula: 0, feeds: 0, pee: 0, poop: 0 }
+        const row = { key: dateKeyOf(date), date, breast: 0, formula: 0, nurseMin: 0, feeds: 0, pee: 0, poop: 0 }
         days.push(row)
         index.set(row.key, row)
       }
@@ -427,6 +452,7 @@ window.__ModuleLoader__.load({
         if (entry.kind === 'feed') {
           row.breast += entry.breastMl
           row.formula += entry.formulaMl
+          row.nurseMin += entry.nurseMin || 0
           row.feeds += 1
         } else if (entry.kind === 'diaper') {
           row.pee += entry.pee
@@ -439,14 +465,20 @@ window.__ModuleLoader__.load({
     function feedTotals(entries) {
       let breast = 0
       let formula = 0
+      let nurseMin = 0
+      let nurseCount = 0
       let count = 0
       for (const entry of entries) {
         if (entry.kind !== 'feed') continue
         breast += entry.breastMl
         formula += entry.formulaMl
+        if (entry.nurseMin > 0) {
+          nurseMin += entry.nurseMin
+          nurseCount += 1
+        }
         count += 1
       }
-      return { breast, formula, total: breast + formula, count }
+      return { breast, formula, total: breast + formula, count, nurseMin, nurseCount }
     }
 
     function diaperTotals(entries) {
@@ -518,10 +550,7 @@ window.__ModuleLoader__.load({
 
     function describeEntry(entry, t) {
       if (entry.kind === 'feed') {
-        const parts = []
-        if (entry.breastMl > 0) parts.push(t('breastMilk') + ' ' + entry.breastMl + ' ml')
-        if (entry.formulaMl > 0) parts.push(t('formula') + ' ' + entry.formulaMl + ' ml')
-        return { main: parts.join(' · '), sub: '' }
+        return { main: feedAmountText(entry, t), sub: '' }
       }
       if (entry.kind === 'weight') {
         return { main: formatKg(entry.grams) + ' kg', sub: '' }
@@ -908,6 +937,7 @@ window.__ModuleLoader__.load({
       const todayTotal = totals[totals.length - 1] || 0
       const recordedDays = totals.filter(total => total > 0).length
       const average = recordedDays > 0 ? Math.round(milkTotal / recordedDays) : 0
+      const nurseTotal = days.reduce((sum, day) => sum + (day.nurseMin || 0), 0)
       const labelEvery = days.length <= 10
 
       return h('div', { ref, className: 'bt-chart' },
@@ -916,7 +946,9 @@ window.__ModuleLoader__.load({
           h('b', null, todayTotal + ' ml'),
           h('span', { className: 'bt-chart-sep' }, '·'),
           h('span', { title: t('milkAverageHint') }, t('milkAverageLabel')),
-          h('b', { title: t('milkAverageHint') }, average + ' ml')
+          h('b', { title: t('milkAverageHint') }, average + ' ml'),
+          nurseTotal > 0 ? h('span', { className: 'bt-chart-sep' }, '·') : null,
+          nurseTotal > 0 ? h('span', null, t('nurseShort') + ' ' + nurseTotal + ' ' + t('minutes')) : null
         ),
         h('svg', {
           viewBox: '0 0 ' + w + ' ' + height,
@@ -1246,6 +1278,8 @@ window.__ModuleLoader__.load({
       const [at, setAt] = React.useState(() => toInputValue(new Date()))
       const [breast, setBreast] = React.useState('')
       const [formula, setFormula] = React.useState('')
+      const [nurseMin, setNurseMin] = React.useState('')
+      const [side, setSide] = React.useState('both')
       const [kg, setKg] = React.useState('')
       const [pee, setPee] = React.useState('1')
       const [poop, setPoop] = React.useState('0')
@@ -1262,6 +1296,8 @@ window.__ModuleLoader__.load({
         setAt(toInputValue(new Date(editing.at)))
         setBreast(editing.kind === 'feed' && editing.breastMl ? String(editing.breastMl) : '')
         setFormula(editing.kind === 'feed' && editing.formulaMl ? String(editing.formulaMl) : '')
+        setNurseMin(editing.kind === 'feed' && editing.nurseMin ? String(editing.nurseMin) : '')
+        setSide(editing.kind === 'feed' && editing.side ? editing.side : 'both')
         setKg(editing.kind === 'weight' ? formatKg(editing.grams) : '')
         setPee(editing.kind === 'diaper' ? String(editing.pee) : '1')
         setPoop(editing.kind === 'diaper' ? String(editing.poop) : '0')
@@ -1277,6 +1313,8 @@ window.__ModuleLoader__.load({
           setAt(toInputValue(new Date()))
           setBreast('')
           setFormula('')
+          setNurseMin('')
+          setSide('both')
           setKg('')
           setPee('1')
           setPoop('0')
@@ -1298,6 +1336,7 @@ window.__ModuleLoader__.load({
           || mode !== 'feed'
           || breast !== ''
           || formula !== ''
+          || nurseMin !== ''
           || kg !== ''
           || pee !== '1'
           || poop !== '0'
@@ -1306,13 +1345,15 @@ window.__ModuleLoader__.load({
           || atTouched.current,
         )
         return () => actions.setDirty(false)
-      }, [actions, editing, mode, breast, formula, kg, pee, poop, dose, note, at])
+      }, [actions, editing, mode, breast, formula, nurseMin, kg, pee, poop, dose, note, at])
 
       const reset = () => {
         atTouched.current = false
         setAt(toInputValue(new Date()))
         setBreast('')
         setFormula('')
+        setNurseMin('')
+        setSide('both')
         setKg('')
         setPee('1')
         setPoop('0')
@@ -1330,9 +1371,12 @@ window.__ModuleLoader__.load({
         if (mode === 'feed') {
           const milk = numberOrZero(breast)
           const powder = numberOrZero(formula)
-          if (milk + powder <= 0) { setLocalError(t('needMilk')); return }
+          const nurse = numberOrZero(nurseMin)
+          if (milk + powder + nurse <= 0) { setLocalError(t('needFeed')); return }
           entry.breastMl = milk
           entry.formulaMl = powder
+          entry.nurseMin = nurse
+          if (nurse > 0) entry.side = side
         } else if (mode === 'weight') {
           const value = Number(kg)
           if (!Number.isFinite(value) || value <= 0) { setLocalError(t('needWeight')); return }
@@ -1393,9 +1437,27 @@ window.__ModuleLoader__.load({
             }, t('now'))
           )
         ),
-        mode === 'feed' ? h('div', { className: 'bt-row' },
-          h(Field, { label: t('breastMilk') }, h(NumberInput, { value: breast, onChange: setBreast, min: 0, max: 2000, step: 5, suffix: 'ml', placeholder: '0', ariaLabel: t('breastMilk') })),
-          h(Field, { label: t('formula') }, h(NumberInput, { value: formula, onChange: setFormula, min: 0, max: 2000, step: 5, suffix: 'ml', placeholder: '0', ariaLabel: t('formula') }))
+        mode === 'feed' ? h('div', { className: 'bt-feed-fields' },
+          h('div', { className: 'bt-row' },
+            h(Field, { label: t('breastMilk') }, h(NumberInput, { value: breast, onChange: setBreast, min: 0, max: 2000, step: 5, suffix: 'ml', placeholder: '0', ariaLabel: t('breastMilk') })),
+            h(Field, { label: t('formula') }, h(NumberInput, { value: formula, onChange: setFormula, min: 0, max: 2000, step: 5, suffix: 'ml', placeholder: '0', ariaLabel: t('formula') }))
+          ),
+          h('div', { className: 'bt-row' },
+            h(Field, { label: t('nurseMin') }, h(NumberInput, { value: nurseMin, onChange: setNurseMin, min: 0, max: 240, step: 1, suffix: t('minutes'), placeholder: '0', ariaLabel: t('nurseMin') })),
+            h(Field, { label: t('side') },
+              h('div', { className: 'bt-choice-row' },
+                [['left', t('sideLeft')], ['right', t('sideRight')], ['both', t('sideBoth')]].map(([key, label]) => h('button', {
+                  key,
+                  type: 'button',
+                  className: 'bt-choice',
+                  'data-active': side === key ? 'true' : undefined,
+                  'aria-pressed': side === key ? 'true' : 'false',
+                  onClick: () => setSide(key),
+                }, label))
+              )
+            )
+          ),
+          h('p', { className: 'bt-hint' }, t('nurseHint'))
         ) : null,
         mode === 'weight' ? h(Field, { label: t('weightKg') },
           h(NumberInput, { value: kg, onChange: setKg, min: 0.3, max: 40, step: 0.01, suffix: 'kg', placeholder: '5.20', ariaLabel: t('weightKg') })
@@ -1458,6 +1520,11 @@ window.__ModuleLoader__.load({
       const buckets = periodBuckets(today)
       const maxBucket = Math.max(1, ...buckets.map(bucket => bucket.total))
       const supplements = today.filter(entry => entry.kind === 'supplement')
+      const milkFoot = []
+      if (milk.breast > 0 || milk.formula > 0) {
+        milkFoot.push(t('breastShort') + ' ' + milk.breast + ' · ' + t('formulaShort') + ' ' + milk.formula)
+      }
+      if (milk.nurseMin > 0) milkFoot.push(t('nurseShort') + ' ' + milk.nurseMin + ' ' + t('minutes'))
 
       return h('div', { className: 'bt-today' },
         h('div', { className: 'bt-form-col' },
@@ -1484,7 +1551,7 @@ window.__ModuleLoader__.load({
               label: t('todayMilk'),
               value: milk.total > 0 ? String(milk.total) : t('noDataShort'),
               unit: milk.total > 0 ? 'ml' : '',
-              foot: milk.count > 0 ? t('breastShort') + ' ' + milk.breast + ' · ' + t('formulaShort') + ' ' + milk.formula : t('notYet'),
+              foot: milkFoot.length > 0 ? milkFoot.join(' · ') : t('notYet'),
             }),
             h(StatCard, {
               label: t('todayFeeds'),
@@ -1655,7 +1722,12 @@ window.__ModuleLoader__.load({
             h('div', { className: 'bt-day-head' },
               h('span', { className: 'bt-day-title' }, dayHeading(key, t, lang)),
               h('span', { className: 'bt-day-meta' }, t('historyMeta', {
-                milk: milk.total > 0 ? milk.total + ' ml' : t('noDataShort'),
+                milk: (() => {
+                  const parts = []
+                  if (milk.total > 0) parts.push(milk.total + ' ml')
+                  if (milk.nurseMin > 0) parts.push(t('nurseShort') + ' ' + milk.nurseMin + ' ' + t('minutes'))
+                  return parts.length > 0 ? parts.join(' · ') : t('noDataShort')
+                })(),
                 pee: diaper.pee,
                 poop: diaper.poop,
               }))
@@ -1879,6 +1951,7 @@ window.__ModuleLoader__.load({
       zh: {
         daily: '每日汇总', feed: '喂奶明细', diaper: '尿布明细', weightSheet: '体重记录', supplementSheet: '补充剂',
         date: '日期', time: '时间', milkTotal: '奶量合计(ml)', breast: '母乳(ml)', formula: '奶粉(ml)',
+        nurseMin: '亲喂(分钟)', side: '侧别', sideLeft: '左', sideRight: '右', sideBoth: '双',
         feedCount: '喂奶次数', pee: '小便(次)', poop: '大便(次)', diaperTotal: '尿布合计(次)',
         weightKg: '体重(kg)', d3Count: '维生素D3(次)', probioticCount: '益生菌(次)', milk: '奶量(ml)',
         note: '备注', type: '类型', dose: '剂量', d3: '维生素D3', probiotic: '益生菌',
@@ -1886,6 +1959,7 @@ window.__ModuleLoader__.load({
       en: {
         daily: 'Daily summary', feed: 'Feedings', diaper: 'Diapers', weightSheet: 'Weight', supplementSheet: 'Supplements',
         date: 'Date', time: 'Time', milkTotal: 'Milk (ml)', breast: 'Breast milk (ml)', formula: 'Formula (ml)',
+        nurseMin: 'Nursing (min)', side: 'Side', sideLeft: 'Left', sideRight: 'Right', sideBoth: 'Both',
         feedCount: 'Feedings', pee: 'Pee (times)', poop: 'Poop (times)', diaperTotal: 'Diapers (times)',
         weightKg: 'Weight (kg)', d3Count: 'Vitamin D3 (times)', probioticCount: 'Probiotic (times)', milk: 'Milk (ml)',
         note: 'Note', type: 'Type', dose: 'Dose', d3: 'Vitamin D3', probiotic: 'Probiotic',
@@ -1928,6 +2002,7 @@ window.__ModuleLoader__.load({
             milk.breast,
             milk.formula,
             milk.count,
+            milk.nurseMin,
             diaper.pee,
             diaper.poop,
             diaper.pee + diaper.poop,
@@ -1939,8 +2014,12 @@ window.__ModuleLoader__.load({
         }
       }
 
+      const sideLabel = entry => entry.side === 'left' ? H.sideLeft
+        : entry.side === 'right' ? H.sideRight
+          : entry.side === 'both' ? H.sideBoth : ''
       const feedRows = entries.filter(entry => entry.kind === 'feed')
-        .map(entry => [dateTimeOf(entry.at), entry.breastMl, entry.formulaMl, entry.breastMl + entry.formulaMl, entry.note || ''])
+        .map(entry => [dateTimeOf(entry.at), entry.breastMl, entry.formulaMl, entry.nurseMin || 0,
+          (entry.nurseMin || 0) > 0 ? sideLabel(entry) : '', entry.breastMl + entry.formulaMl, entry.note || ''])
       const diaperRows = entries.filter(entry => entry.kind === 'diaper')
         .map(entry => [dateTimeOf(entry.at), entry.pee, entry.poop, entry.pee + entry.poop, entry.note || ''])
       const weightRows = entries.filter(entry => entry.kind === 'weight')
@@ -1953,9 +2032,9 @@ window.__ModuleLoader__.load({
           name: H.daily,
           columns: [
             { header: H.date, width: 12 }, { header: H.milkTotal, width: 14 }, { header: H.breast, width: 11 },
-            { header: H.formula, width: 11 }, { header: H.feedCount, width: 11 }, { header: H.pee, width: 11 },
-            { header: H.poop, width: 11 }, { header: H.diaperTotal, width: 13 }, { header: H.weightKg, width: 11 },
-            { header: H.d3Count, width: 14 }, { header: H.probioticCount, width: 13 },
+            { header: H.formula, width: 11 }, { header: H.feedCount, width: 11 }, { header: H.nurseMin, width: 12 },
+            { header: H.pee, width: 11 }, { header: H.poop, width: 11 }, { header: H.diaperTotal, width: 13 },
+            { header: H.weightKg, width: 11 }, { header: H.d3Count, width: 14 }, { header: H.probioticCount, width: 13 },
           ],
           rows: dailyRows,
         },
@@ -1963,7 +2042,8 @@ window.__ModuleLoader__.load({
           name: H.feed,
           columns: [
             { header: H.time, width: 18 }, { header: H.breast, width: 11 }, { header: H.formula, width: 11 },
-            { header: H.milk, width: 11 }, { header: H.note, width: 30 },
+            { header: H.nurseMin, width: 12 }, { header: H.side, width: 8 }, { header: H.milk, width: 11 },
+            { header: H.note, width: 30 },
           ],
           rows: feedRows,
         },

@@ -96,8 +96,14 @@ function normalizeEntry(raw) {
   if (kind === 'feed') {
     const breastMl = boundedOrZero(value.breastMl, 2000)
     const formulaMl = boundedOrZero(value.formulaMl, 2000)
-    if (breastMl === null || formulaMl === null || breastMl + formulaMl === 0) return null
-    return { ...base, breastMl, formulaMl }
+    const nurseMin = boundedOrZero(value.nurseMin, 240)
+    if (breastMl === null || formulaMl === null || nurseMin === null) return null
+    if (breastMl + formulaMl + nurseMin === 0) return null
+    const feed = { ...base, breastMl, formulaMl, nurseMin }
+    if (nurseMin > 0 && (value.side === 'left' || value.side === 'right' || value.side === 'both')) {
+      feed.side = value.side
+    }
+    return feed
   }
   if (kind === 'weight') {
     const grams = bounded(value.grams, 300, 40000)
