@@ -319,6 +319,18 @@ window.__ModuleLoader__.load({
       return Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000))
     }
 
+    /** 上次喂奶的量：单一时显示「奶粉 90 ml」，混合时显示「母乳 60 + 奶粉 90 (150 ml)」。 */
+    function feedAmountText(entry, t) {
+      const pieces = []
+      if (entry.breastMl > 0) pieces.push(t('breastMilk') + ' ' + entry.breastMl)
+      if (entry.formulaMl > 0) pieces.push(t('formula') + ' ' + entry.formulaMl)
+      if (pieces.length === 0) return ''
+      const total = entry.breastMl + entry.formulaMl
+      return pieces.length > 1
+        ? pieces.join(' + ') + ' (' + total + ' ml)'
+        : pieces[0] + ' ml'
+    }
+
     /** 上次喂奶的显示时间：今天只显示时:分，昨天带“昨天”，更早带月/日。 */
     function lastTimeWhen(iso, t) {
       const key = dateKeyOf(iso)
@@ -1459,6 +1471,9 @@ window.__ModuleLoader__.load({
               ? h('b', { className: 'bt-last-feed-time' }, lastTimeWhen(lastFeed.at, t))
               : h('span', { className: 'bt-last-feed-time' }, t('notYet')),
             lastFeed
+              ? h('span', { className: 'bt-last-feed-amount' }, feedAmountText(lastFeed, t))
+              : null,
+            lastFeed
               ? h('span', { className: 'bt-last-feed-gap' },
                 h('span', null, t('intervalLabel')),
                 h('b', null, intervalText(minutesSince(lastFeed.at), t)))
@@ -2321,6 +2336,7 @@ window.__ModuleLoader__.load({
 .bt-last-feed-icon { align-self: center; display: inline-flex; color: var(--dsw-alias-brand-primary); }
 .bt-last-feed-label { font-weight: 500; }
 .bt-last-feed-time { font-size: 14px; font-weight: 600; color: var(--dsw-alias-label-primary); font-variant-numeric: tabular-nums; }
+.bt-last-feed-amount { color: var(--dsw-alias-label-secondary); font-variant-numeric: tabular-nums; }
 .bt-last-feed-gap { display: inline-flex; align-items: baseline; gap: 4px; margin-left: auto; }
 .bt-last-feed-gap b { font-size: 14px; color: var(--dsw-alias-brand-primary); font-variant-numeric: tabular-nums; }
 .bt-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
