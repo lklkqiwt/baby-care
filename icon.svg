@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="Baby log icon">
+  <rect x="6" y="6" width="116" height="116" rx="30" fill="#247bbf"/>
+  <rect x="46" y="44" width="36" height="56" rx="12" fill="none" stroke="#ffffff" stroke-width="6"/>
+  <path d="M55 44v-9h18v9" fill="none" stroke="#ffffff" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M55 22h18" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/>
+  <path d="M55 64h18" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round" opacity="0.75"/>
+  <circle cx="92" cy="34" r="14" fill="#ffffff"/>
+  <path d="M92 40.5c-4.6-3.4-7-5.7-7-8.7a3.4 3.4 0 0 1 7-1.2 3.4 3.4 0 0 1 7 1.2c0 3-2.4 5.3-7 8.7z" fill="#e8556d"/>
+</svg>
