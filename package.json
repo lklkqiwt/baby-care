@@ -2,7 +2,7 @@
   "name": "@local/baby-diary",
   "version": "1.0.0",
   "private": true,
-  "description": "宝宝记录：体重、喂奶（母乳/奶粉 ml、亲喂分钟与侧别）、大小便、维生素D3 与益生菌，含按时段统计与趋势图表。",
+  "description": "宝宝记录：体重、身高、喂奶（母乳/奶粉 ml、亲喂分钟与侧别）、大小便、维生素D3 与益生菌，含按时段统计与趋势图表。",
   "type": "module",
   "exports": {
     ".": "./index.js",

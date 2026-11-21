@@ -19,7 +19,7 @@ const MAX_ENTRIES = 20000
 const MAX_NAME = 40
 const MAX_NOTE = 200
 const MAX_DOSE = 40
-const KINDS = new Set(['feed', 'weight', 'diaper', 'supplement'])
+const KINDS = new Set(['feed', 'weight', 'height', 'diaper', 'supplement'])
 const SUPPLEMENTS = new Set(['d3', 'probiotic'])
 
 /** 数据文件位置：$DSH_HOME/baby-diary/data.json，默认 ~/.dsh。 */
@@ -109,6 +109,11 @@ function normalizeEntry(raw) {
     const grams = bounded(value.grams, 300, 40000)
     if (grams === null) return null
     return { ...base, grams }
+  }
+  if (kind === 'height') {
+    const mm = bounded(value.mm, 200, 1500)
+    if (mm === null) return null
+    return { ...base, mm }
   }
   if (kind === 'diaper') {
     const pee = boundedOrZero(value.pee, 20)

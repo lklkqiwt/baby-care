@@ -59,6 +59,13 @@ window.__ModuleLoader__.load({
         needDiaper: '小便或大便次数至少填一项',
         feed: '喂奶',
         weight: '体重',
+        height: '身高',
+        heightCm: '身高（cm）',
+        latestHeight: '最近身高',
+        heightTrend: '身高曲线',
+        heightHint: '每次测量都会连成一条生长曲线',
+        needHeight: '请输入身高',
+        heightDelta: '较上次 {delta}',
         diaper: '尿布',
         supplement: '补充',
         d3: '维生素D3',
@@ -190,8 +197,15 @@ window.__ModuleLoader__.load({
         needDiaper: 'Enter pee or poop',
         feed: 'Feeding',
         weight: 'Weight',
+        height: 'Height',
+        heightCm: 'Height (cm)',
+        latestHeight: 'Latest height',
+        heightTrend: 'Height curve',
+        heightHint: 'Every measurement joins the growth curve',
+        needHeight: 'Enter a height',
+        heightDelta: '{delta} since last',
         diaper: 'Diaper',
-        supplement: 'Supplements',
+        supplement: 'Supp.',
         d3: 'Vitamin D3',
         probiotic: 'Probiotic',
         time: 'Time',
@@ -390,6 +404,14 @@ window.__ModuleLoader__.load({
       return (grams / 1000).toFixed(2)
     }
 
+    function formatCm(mm) {
+      return (mm / 10).toFixed(1)
+    }
+
+    function formatCmDelta(mm) {
+      return (mm > 0 ? '+' : '') + (mm / 10).toFixed(1) + ' cm'
+    }
+
     function formatDelta(grams) {
       return (grams > 0 ? '+' : '') + grams + ' g'
     }
@@ -555,6 +577,9 @@ window.__ModuleLoader__.load({
       if (entry.kind === 'weight') {
         return { main: formatKg(entry.grams) + ' kg', sub: '' }
       }
+      if (entry.kind === 'height') {
+        return { main: formatCm(entry.mm) + ' cm', sub: '' }
+      }
       if (entry.kind === 'diaper') {
         const parts = []
         if (entry.pee > 0) parts.push(t('pee') + ' ' + entry.pee + ' ' + t('times'))
@@ -639,6 +664,13 @@ window.__ModuleLoader__.load({
       ], props.size)
     }
 
+    function RulerIcon(props) {
+      return icon([
+        h('rect', { key: 'r', x: 3.5, y: 9, width: 17, height: 6, rx: 1.5 }),
+        h('path', { key: 'a', d: 'M7 9v2.5M10.5 9v4M14 9v2.5M17.5 9v4' }),
+      ], props.size)
+    }
+
     function DiaperIcon(props) {
       return icon([
         h('path', { key: 'p', d: 'M4 7h16l-1.2 8.4a2 2 0 0 1-2 1.8H7.2a2 2 0 0 1-2-1.8L4 7z' }),
@@ -691,6 +723,7 @@ window.__ModuleLoader__.load({
     function kindIcon(kind) {
       if (kind === 'feed') return h(BottleIcon, { size: 15 })
       if (kind === 'weight') return h(ScaleIcon, { size: 15 })
+      if (kind === 'height') return h(RulerIcon, { size: 15 })
       if (kind === 'diaper') return h(DiaperIcon, { size: 15 })
       return h(PillIcon, { size: 15 })
     }
@@ -805,12 +838,12 @@ window.__ModuleLoader__.load({
       )
     }
 
-    function WeightChart({ entries, t }) {
+    function GrowthChart({ entries, t, valueOf, formatValue, unit, summaryLabel, title, minPad, color, gradientId }) {
       const [ref, width] = useElementWidth()
       const points = React.useMemo(() => entries
         .slice()
         .sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0))
-        .map(entry => ({ time: Date.parse(entry.at), grams: entry.grams, at: entry.at })), [entries])
+        .map(entry => ({ time: Date.parse(entry.at), value: valueOf(entry), at: entry.at })), [entries, valueOf])
 
       if (points.length === 0) {
         return h('div', { ref, className: 'bt-chart' }, h(Empty, { text: t('noData') }))
@@ -825,18 +858,18 @@ window.__ModuleLoader__.load({
       const last = points[points.length - 1].time
       const single = points.length === 1
       const span = Math.max(last - first, 86400000)
-      let low = Math.min(...points.map(point => point.grams))
-      let high = Math.max(...points.map(point => point.grams))
-      const pad = Math.max(80, Math.round((high - low) * 0.25))
+      let low = Math.min(...points.map(point => point.value))
+      let high = Math.max(...points.map(point => point.value))
+      const pad = Math.max(minPad, Math.round((high - low) * 0.25))
       low -= pad
       high += pad
-      if (high === low) { low -= 100; high += 100 }
+      if (high === low) { low -= minPad; high += minPad }
 
       const xOf = time => single
         ? margin.left + innerW / 2
         : margin.left + ((time - first) / span) * innerW
-      const yOf = grams => margin.top + innerH - ((grams - low) / (high - low)) * innerH
-      const line = points.map((point, index) => (index === 0 ? 'M' : 'L') + xOf(point.time).toFixed(1) + ' ' + yOf(point.grams).toFixed(1)).join(' ')
+      const yOf = value => margin.top + innerH - ((value - low) / (high - low)) * innerH
+      const line = points.map((point, index) => (index === 0 ? 'M' : 'L') + xOf(point.time).toFixed(1) + ' ' + yOf(point.value).toFixed(1)).join(' ')
       const baseline = (margin.top + innerH).toFixed(1)
       const area = line + ' L' + xOf(last).toFixed(1) + ' ' + baseline + ' L' + xOf(first).toFixed(1) + ' ' + baseline + ' Z'
       const ticks = [low, (low + high) / 2, high]
@@ -849,20 +882,20 @@ window.__ModuleLoader__.load({
       }
 
       const latestPoint = points[points.length - 1]
-      const weightLabel = t('weightTrend') + ' · ' + t('latestWeight') + ' ' + formatKg(latestPoint.grams) + ' kg'
+      const chartLabel = title + ' · ' + summaryLabel + ' ' + formatValue(latestPoint.value) + ' ' + unit
 
       return h('div', { ref, className: 'bt-chart' },
         h('div', { className: 'bt-chart-summary' },
-          h('span', null, t('latestWeight')),
-          h('b', null, formatKg(latestPoint.grams) + ' kg'),
+          h('span', null, summaryLabel),
+          h('b', null, formatValue(latestPoint.value) + ' ' + unit),
           h('span', { className: 'bt-chart-sep' }, '·'),
           h('span', null, t('weightRecords', { n: points.length }))
         ),
-        h('svg', { viewBox: '0 0 ' + w + ' ' + height, width: '100%', height, role: 'img', 'aria-label': weightLabel, style: { display: 'block' } },
+        h('svg', { viewBox: '0 0 ' + w + ' ' + height, width: '100%', height, role: 'img', 'aria-label': chartLabel, style: { display: 'block' } },
           h('defs', null,
-            h('linearGradient', { id: 'bt-weight-fill', x1: '0', y1: '0', x2: '0', y2: '1' },
-              h('stop', { offset: '0%', style: { stopColor: SERIES_PRIMARY, stopOpacity: 0.22 } }),
-              h('stop', { offset: '100%', style: { stopColor: SERIES_PRIMARY, stopOpacity: 0 } })
+            h('linearGradient', { id: gradientId, x1: '0', y1: '0', x2: '0', y2: '1' },
+              h('stop', { offset: '0%', style: { stopColor: color, stopOpacity: 0.22 } }),
+              h('stop', { offset: '100%', style: { stopColor: color, stopOpacity: 0 } })
             )
           ),
           ticks.map((tick, index) => h('g', { key: 'y' + index },
@@ -875,7 +908,7 @@ window.__ModuleLoader__.load({
             h('text', {
               x: margin.left - 8, y: yOf(tick) + 3, textAnchor: 'end',
               style: { fill: 'var(--dsw-alias-label-tertiary)', fontSize: '10px' },
-            }, formatKg(tick))
+            }, formatValue(tick))
           )),
           xLabels.map((label, index) => h('text', {
             key: 'x' + index,
@@ -884,34 +917,62 @@ window.__ModuleLoader__.load({
             textAnchor: label.anchor,
             style: { fill: 'var(--dsw-alias-label-tertiary)', fontSize: '10px' },
           }, dayShortLabel(new Date(label.time), 'zh'))),
-          h('path', { d: area, style: { fill: 'url(#bt-weight-fill)', stroke: 'none' } }),
+          h('path', { d: area, style: { fill: 'url(#' + gradientId + ')', stroke: 'none' } }),
           h('path', {
             d: line,
-            style: { fill: 'none', stroke: SERIES_PRIMARY },
+            style: { fill: 'none', stroke: color },
             strokeWidth: 2,
             strokeLinejoin: 'round',
             strokeLinecap: 'round',
           }),
           points.map((point, index) => {
-            const labelY = Math.max(10, yOf(point.grams) - (index % 2 === 0 ? 9 : 21))
+            const labelY = Math.max(10, yOf(point.value) - (index % 2 === 0 ? 9 : 21))
             return h('g', { key: 'p' + index },
               h('circle', {
                 cx: xOf(point.time),
-                cy: yOf(point.grams),
+                cy: yOf(point.value),
                 r: index === points.length - 1 ? 4 : 3,
-                style: { fill: 'var(--dsw-alias-bg-layer-1)', stroke: SERIES_PRIMARY },
+                style: { fill: 'var(--dsw-alias-bg-layer-1)', stroke: color },
                 strokeWidth: 2,
-              }, h('title', null, formatKg(point.grams) + ' kg · ' + dayShortLabel(new Date(point.time), 'zh'))),
+              }, h('title', null, formatValue(point.value) + ' ' + unit + ' · ' + dayShortLabel(new Date(point.time), 'zh'))),
               h('text', {
                 x: xOf(point.time),
                 y: labelY,
                 textAnchor: 'middle',
                 style: { fill: 'var(--dsw-alias-label-secondary)', fontSize: '9px', fontWeight: 600 },
-              }, formatKg(point.grams))
+              }, formatValue(point.value))
             )
           })
         )
       )
+    }
+
+    function WeightChart({ entries, t }) {
+      return h(GrowthChart, {
+        entries, t,
+        valueOf: entry => entry.grams,
+        formatValue: formatKg,
+        unit: 'kg',
+        summaryLabel: t('latestWeight'),
+        title: t('weightTrend'),
+        minPad: 80,
+        color: SERIES_PRIMARY,
+        gradientId: 'bt-weight-fill',
+      })
+    }
+
+    function HeightChart({ entries, t }) {
+      return h(GrowthChart, {
+        entries, t,
+        valueOf: entry => entry.mm,
+        formatValue: formatCm,
+        unit: 'cm',
+        summaryLabel: t('latestHeight'),
+        title: t('heightTrend'),
+        minPad: 2,
+        color: SERIES_SECONDARY,
+        gradientId: 'bt-height-fill',
+      })
     }
 
     function axisEvery(count) {
@@ -1281,6 +1342,7 @@ window.__ModuleLoader__.load({
       const [nurseMin, setNurseMin] = React.useState('')
       const [side, setSide] = React.useState('both')
       const [kg, setKg] = React.useState('')
+      const [heightCm, setHeightCm] = React.useState('')
       const [pee, setPee] = React.useState('1')
       const [poop, setPoop] = React.useState('0')
       const [item, setItem] = React.useState('d3')
@@ -1299,6 +1361,7 @@ window.__ModuleLoader__.load({
         setNurseMin(editing.kind === 'feed' && editing.nurseMin ? String(editing.nurseMin) : '')
         setSide(editing.kind === 'feed' && editing.side ? editing.side : 'both')
         setKg(editing.kind === 'weight' ? formatKg(editing.grams) : '')
+        setHeightCm(editing.kind === 'height' ? formatCm(editing.mm) : '')
         setPee(editing.kind === 'diaper' ? String(editing.pee) : '1')
         setPoop(editing.kind === 'diaper' ? String(editing.poop) : '0')
         setItem(editing.kind === 'supplement' ? editing.item : 'd3')
@@ -1316,6 +1379,7 @@ window.__ModuleLoader__.load({
           setNurseMin('')
           setSide('both')
           setKg('')
+          setHeightCm('')
           setPee('1')
           setPoop('0')
           setDose('')
@@ -1338,6 +1402,7 @@ window.__ModuleLoader__.load({
           || formula !== ''
           || nurseMin !== ''
           || kg !== ''
+          || heightCm !== ''
           || pee !== '1'
           || poop !== '0'
           || dose !== ''
@@ -1345,7 +1410,7 @@ window.__ModuleLoader__.load({
           || atTouched.current,
         )
         return () => actions.setDirty(false)
-      }, [actions, editing, mode, breast, formula, nurseMin, kg, pee, poop, dose, note, at])
+      }, [actions, editing, mode, breast, formula, nurseMin, kg, heightCm, pee, poop, dose, note, at])
 
       const reset = () => {
         atTouched.current = false
@@ -1355,6 +1420,7 @@ window.__ModuleLoader__.load({
         setNurseMin('')
         setSide('both')
         setKg('')
+        setHeightCm('')
         setPee('1')
         setPoop('0')
         setDose('')
@@ -1381,6 +1447,10 @@ window.__ModuleLoader__.load({
           const value = Number(kg)
           if (!Number.isFinite(value) || value <= 0) { setLocalError(t('needWeight')); return }
           entry.grams = Math.round(value * 1000)
+        } else if (mode === 'height') {
+          const value = Number(heightCm)
+          if (!Number.isFinite(value) || value <= 0) { setLocalError(t('needHeight')); return }
+          entry.mm = Math.round(value * 10)
         } else if (mode === 'diaper') {
           const wet = numberOrZero(pee)
           const dirty = numberOrZero(poop)
@@ -1410,7 +1480,7 @@ window.__ModuleLoader__.load({
           )
           : null,
         h('div', { className: 'bt-types' },
-          [['feed', t('feed')], ['weight', t('weight')], ['diaper', t('diaper')], ['supplement', t('supplement')]].map(([kind, label]) => h('button', {
+          [['feed', t('feed')], ['weight', t('weight')], ['height', t('height')], ['diaper', t('diaper')], ['supplement', t('supplement')]].map(([kind, label]) => h('button', {
             key: kind,
             type: 'button',
             className: 'bt-type',
@@ -1461,6 +1531,9 @@ window.__ModuleLoader__.load({
         ) : null,
         mode === 'weight' ? h(Field, { label: t('weightKg') },
           h(NumberInput, { value: kg, onChange: setKg, min: 0.3, max: 40, step: 0.01, suffix: 'kg', placeholder: '5.20', ariaLabel: t('weightKg') })
+        ) : null,
+        mode === 'height' ? h(Field, { label: t('heightCm') },
+          h(NumberInput, { value: heightCm, onChange: setHeightCm, min: 20, max: 150, step: 0.1, suffix: 'cm', placeholder: '50.0', ariaLabel: t('heightCm') })
         ) : null,
         mode === 'diaper' ? h('div', { className: 'bt-row' },
           h(Field, { label: t('pee') }, h(NumberInput, { value: pee, onChange: setPee, min: 0, max: 20, step: 1, suffix: t('times'), ariaLabel: t('pee') })),
@@ -1517,6 +1590,9 @@ window.__ModuleLoader__.load({
       const weights = data.entries.filter(entry => entry.kind === 'weight').sort((a, b) => (a.at < b.at ? 1 : -1))
       const latest = weights[0]
       const previous = weights[1]
+      const heights = data.entries.filter(entry => entry.kind === 'height').sort((a, b) => (a.at < b.at ? 1 : -1))
+      const latestHeight = heights[0]
+      const previousHeight = heights[1]
       const buckets = periodBuckets(today)
       const maxBucket = Math.max(1, ...buckets.map(bucket => bucket.total))
       const supplements = today.filter(entry => entry.kind === 'supplement')
@@ -1571,6 +1647,14 @@ window.__ModuleLoader__.load({
               unit: latest ? 'kg' : '',
               foot: latest
                 ? (previous ? t('weightDelta', { delta: formatDelta(latest.grams - previous.grams) }) : t('recordedAt', { date: dayHeading(dateKeyOf(latest.at), t, lang) }))
+                : t('notYet'),
+            }),
+            h(StatCard, {
+              label: t('latestHeight'),
+              value: latestHeight ? formatCm(latestHeight.mm) : t('noDataShort'),
+              unit: latestHeight ? 'cm' : '',
+              foot: latestHeight
+                ? (previousHeight ? t('heightDelta', { delta: formatCmDelta(latestHeight.mm - previousHeight.mm) }) : t('recordedAt', { date: dayHeading(dateKeyOf(latestHeight.at), t, lang) }))
                 : t('notYet'),
             })
           ),
@@ -1635,6 +1719,7 @@ window.__ModuleLoader__.load({
       const [range, setRange] = React.useState(7)
       const days = buildDays(data.entries, range)
       const weights = data.entries.filter(entry => entry.kind === 'weight')
+      const heights = data.entries.filter(entry => entry.kind === 'height')
       const rangeStart = new Date()
       rangeStart.setHours(0, 0, 0, 0)
       rangeStart.setDate(rangeStart.getDate() - (range - 1))
@@ -1660,6 +1745,10 @@ window.__ModuleLoader__.load({
             title: t('weightTrend'),
             hint: t('weightHint'),
           }, h(WeightChart, { entries: weights, t })),
+          h(ChartCard, {
+            title: t('heightTrend'),
+            hint: t('heightHint'),
+          }, h(HeightChart, { entries: heights, t })),
           h(ChartCard, {
             title: t('milkTrend'),
             hint: t('milkHint'),
@@ -1951,6 +2040,7 @@ window.__ModuleLoader__.load({
       zh: {
         daily: '每日汇总', feed: '喂奶明细', diaper: '尿布明细', weightSheet: '体重记录', supplementSheet: '补充剂',
         date: '日期', time: '时间', milkTotal: '奶量合计(ml)', breast: '母乳(ml)', formula: '奶粉(ml)',
+        heightSheet: '身高记录', heightCm: '身高(cm)',
         nurseMin: '亲喂(分钟)', side: '侧别', sideLeft: '左', sideRight: '右', sideBoth: '双',
         feedCount: '喂奶次数', pee: '小便(次)', poop: '大便(次)', diaperTotal: '尿布合计(次)',
         weightKg: '体重(kg)', d3Count: '维生素D3(次)', probioticCount: '益生菌(次)', milk: '奶量(ml)',
@@ -1959,6 +2049,7 @@ window.__ModuleLoader__.load({
       en: {
         daily: 'Daily summary', feed: 'Feedings', diaper: 'Diapers', weightSheet: 'Weight', supplementSheet: 'Supplements',
         date: 'Date', time: 'Time', milkTotal: 'Milk (ml)', breast: 'Breast milk (ml)', formula: 'Formula (ml)',
+        heightSheet: 'Height', heightCm: 'Height (cm)',
         nurseMin: 'Nursing (min)', side: 'Side', sideLeft: 'Left', sideRight: 'Right', sideBoth: 'Both',
         feedCount: 'Feedings', pee: 'Pee (times)', poop: 'Poop (times)', diaperTotal: 'Diapers (times)',
         weightKg: 'Weight (kg)', d3Count: 'Vitamin D3 (times)', probioticCount: 'Probiotic (times)', milk: 'Milk (ml)',
@@ -1995,6 +2086,7 @@ window.__ModuleLoader__.load({
           const milk = feedTotals(dayEntries)
           const diaper = diaperTotals(dayEntries)
           const weights = dayEntries.filter(entry => entry.kind === 'weight').sort((a, b) => (a.at < b.at ? -1 : 1))
+          const heights = dayEntries.filter(entry => entry.kind === 'height').sort((a, b) => (a.at < b.at ? -1 : 1))
           const supplements = dayEntries.filter(entry => entry.kind === 'supplement')
           dailyRows.push([
             key,
@@ -2007,6 +2099,7 @@ window.__ModuleLoader__.load({
             diaper.poop,
             diaper.pee + diaper.poop,
             weights.length > 0 ? Number(formatKg(weights[weights.length - 1].grams)) : null,
+            heights.length > 0 ? Number(formatCm(heights[heights.length - 1].mm)) : null,
             supplements.filter(entry => entry.item === 'd3').length,
             supplements.filter(entry => entry.item === 'probiotic').length,
           ])
@@ -2024,6 +2117,8 @@ window.__ModuleLoader__.load({
         .map(entry => [dateTimeOf(entry.at), entry.pee, entry.poop, entry.pee + entry.poop, entry.note || ''])
       const weightRows = entries.filter(entry => entry.kind === 'weight')
         .map(entry => [dateTimeOf(entry.at), Number(formatKg(entry.grams)), entry.note || ''])
+      const heightRows = entries.filter(entry => entry.kind === 'height')
+        .map(entry => [dateTimeOf(entry.at), Number(formatCm(entry.mm)), entry.note || ''])
       const supplementRows = entries.filter(entry => entry.kind === 'supplement')
         .map(entry => [dateTimeOf(entry.at), entry.item === 'd3' ? H.d3 : H.probiotic, entry.dose || '', entry.note || ''])
 
@@ -2034,7 +2129,8 @@ window.__ModuleLoader__.load({
             { header: H.date, width: 12 }, { header: H.milkTotal, width: 14 }, { header: H.breast, width: 11 },
             { header: H.formula, width: 11 }, { header: H.feedCount, width: 11 }, { header: H.nurseMin, width: 12 },
             { header: H.pee, width: 11 }, { header: H.poop, width: 11 }, { header: H.diaperTotal, width: 13 },
-            { header: H.weightKg, width: 11 }, { header: H.d3Count, width: 14 }, { header: H.probioticCount, width: 13 },
+            { header: H.weightKg, width: 11 }, { header: H.heightCm, width: 11 }, { header: H.d3Count, width: 14 },
+            { header: H.probioticCount, width: 13 },
           ],
           rows: dailyRows,
         },
@@ -2061,6 +2157,13 @@ window.__ModuleLoader__.load({
             { header: H.time, width: 18 }, { header: H.weightKg, width: 12 }, { header: H.note, width: 30 },
           ],
           rows: weightRows,
+        },
+        {
+          name: H.heightSheet,
+          columns: [
+            { header: H.time, width: 18 }, { header: H.heightCm, width: 12 }, { header: H.note, width: 30 },
+          ],
+          rows: heightRows,
         },
         {
           name: H.supplementSheet,
@@ -2385,8 +2488,9 @@ window.__ModuleLoader__.load({
 .bt-main-col { min-width: 0; }
 .bt-form { display: flex; flex-direction: column; gap: 12px; padding: 14px; border: 0.5px solid var(--dsw-alias-border-l1); border-radius: 14px; background: var(--dsw-alias-bg-layer-2); }
 .bt-edit-banner { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px; border-radius: 8px; background: color-mix(in srgb, var(--dsw-alias-brand-primary) 10%, transparent); color: var(--dsw-alias-brand-primary); font-size: 12px; }
-.bt-types { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
-.bt-type { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 4px; border: 0.5px solid var(--dsw-alias-border-l1); border-radius: 10px; background: transparent; color: var(--dsw-alias-label-secondary); font: inherit; font-size: 11px; cursor: pointer; }
+.bt-types { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.bt-type { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; padding: 8px 4px; border: 0.5px solid var(--dsw-alias-border-l1); border-radius: 10px; background: transparent; color: var(--dsw-alias-label-secondary); font: inherit; font-size: 11px; cursor: pointer; }
+.bt-type span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bt-type[data-active] { border-color: var(--dsw-alias-brand-primary); background: color-mix(in srgb, var(--dsw-alias-brand-primary) 10%, transparent); color: var(--dsw-alias-brand-primary); }
 .bt-type:disabled { opacity: 0.55; cursor: default; }
 .bt-field { display: flex; flex-direction: column; gap: 6px; }
@@ -2419,7 +2523,8 @@ window.__ModuleLoader__.load({
 .bt-last-feed-amount { color: var(--dsw-alias-label-secondary); font-variant-numeric: tabular-nums; }
 .bt-last-feed-gap { display: inline-flex; align-items: baseline; gap: 4px; margin-left: auto; }
 .bt-last-feed-gap b { font-size: 14px; color: var(--dsw-alias-brand-primary); font-variant-numeric: tabular-nums; }
-.bt-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.bt-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 700px) { .bt-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 560px) { .bt-cards { grid-template-columns: 1fr; } }
 .bt-card { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 12px 14px; border: 0.5px solid var(--dsw-alias-border-l1); border-radius: 14px; background: var(--dsw-alias-bg-layer-2); }
 .bt-card-label { font-size: 12px; color: var(--dsw-alias-label-secondary); }
