@@ -123,6 +123,14 @@ window.__ModuleLoader__.load({
         supplementTrend: '补充剂打卡',
         weightHint: '每次称重都会连成一条成长曲线',
         milkHint: '母乳 + 奶粉按天叠加；亲喂按分钟单独记录，不计入 ml',
+        feedAmountTrend: '每次奶量',
+        feedAmountHint: '当天每次喂养的奶量折线（不含亲喂），可切换日期',
+        previousDay: '前一天',
+        nextDay: '后一天',
+        feedCount: '共 {n} 次',
+        feedSum: '合计 {sum} ml',
+        feedAverage: '平均 {avg} ml',
+        noFeedAmount: '这一天没有记录奶量',
         todayLabel: '今日',
         milkAverageLabel: '日均',
         milkAverageHint: '按有记录的天数计算',
@@ -261,6 +269,14 @@ window.__ModuleLoader__.load({
         supplementTrend: 'Supplement check-ins',
         weightHint: 'Every weigh-in joins the growth curve',
         milkHint: 'Breast milk + formula stacked per day; nursing minutes are tracked separately',
+        feedAmountTrend: 'Per-feed amount',
+        feedAmountHint: 'Milk volume of each feeding that day (nursing excluded)',
+        previousDay: 'Previous day',
+        nextDay: 'Next day',
+        feedCount: '{n} feeds',
+        feedSum: '{sum} ml total',
+        feedAverage: '{avg} ml avg',
+        noFeedAmount: 'No milk volume recorded this day',
         todayLabel: 'Today',
         milkAverageLabel: 'Daily avg',
         milkAverageHint: 'Averaged over days with records',
@@ -1084,6 +1100,120 @@ window.__ModuleLoader__.load({
       )
     }
 
+    function FeedAmountChart({ entries, t, lang }) {
+      const [dayKey, setDayKey] = React.useState(() => dateKeyOf(new Date()))
+      const [ref, width] = useElementWidth()
+      const todayKey = dateKeyOf(new Date())
+      const isToday = dayKey === todayKey
+      const feeds = entries
+        .filter(entry => entry.kind === 'feed' && dateKeyOf(entry.at) === dayKey && entry.breastMl + entry.formulaMl > 0)
+        .sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0))
+      const shift = delta => {
+        const [year, month, day] = dayKey.split('-').map(Number)
+        const date = new Date(year, month - 1, day)
+        date.setDate(date.getDate() + delta)
+        setDayKey(dateKeyOf(date))
+      }
+      const selector = h('div', { className: 'bt-day-nav' },
+        h('button', { type: 'button', className: 'bt-day-button', 'aria-label': t('previousDay'), onClick: () => shift(-1) }, '‹'),
+        h('span', { className: 'bt-day-label' }, dayHeading(dayKey, t, lang)),
+        h('button', {
+          type: 'button',
+          className: 'bt-day-button',
+          'aria-label': t('nextDay'),
+          disabled: isToday,
+          onClick: () => shift(1),
+        }, '›'),
+        isToday ? null : h('button', { type: 'button', className: 'bt-link', onClick: () => setDayKey(todayKey) }, t('dayToday'))
+      )
+      if (feeds.length === 0) {
+        return h('div', { ref, className: 'bt-chart' }, selector, h(Empty, { text: t('noFeedAmount') }))
+      }
+
+      const amounts = feeds.map(entry => entry.breastMl + entry.formulaMl)
+      const maxAmount = Math.max(...amounts)
+      const top = Math.max(10, Math.ceil((maxAmount * 1.15) / 10) * 10)
+      const height = 230
+      const margin = { left: 40, right: 14, top: 26, bottom: 30 }
+      const w = Math.max(width || 320, 260)
+      const innerW = Math.max(10, w - margin.left - margin.right)
+      const innerH = height - margin.top - margin.bottom
+      const count = feeds.length
+      const xOf = index => count === 1
+        ? margin.left + innerW / 2
+        : margin.left + (index / (count - 1)) * innerW
+      const yOf = value => margin.top + innerH - (value / top) * innerH
+      const points = feeds.map((entry, index) => ({
+        amount: entry.breastMl + entry.formulaMl,
+        label: timeOf(entry.at),
+        x: xOf(index),
+        y: yOf(entry.breastMl + entry.formulaMl),
+        title: timeOf(entry.at) + ' · ' + (entry.breastMl > 0 ? t('breastMilk') + ' ' + entry.breastMl + ' · ' : '')
+          + (entry.formulaMl > 0 ? t('formula') + ' ' + entry.formulaMl + ' · ' : '')
+          + (entry.breastMl + entry.formulaMl) + ' ml',
+      }))
+      const line = points.map((point, index) => (index === 0 ? 'M' : 'L') + point.x.toFixed(1) + ' ' + point.y.toFixed(1)).join(' ')
+      const sum = amounts.reduce((total, amount) => total + amount, 0)
+      const average = Math.round(sum / count)
+      const tickValues = [0, top / 2, top]
+      const every = Math.max(1, Math.ceil(count / 8))
+      const valueEvery = Math.max(1, Math.ceil(count / 12))
+      const showValue = index => count <= 12 || index % valueEvery === 0 || index === count - 1
+
+      return h('div', { ref, className: 'bt-chart' },
+        selector,
+        h('div', { className: 'bt-chart-summary' },
+          h('span', null, t('feedCount', { n: count })),
+          h('span', { className: 'bt-chart-sep' }, '·'),
+          h('span', null, t('feedSum', { sum })),
+          h('span', { className: 'bt-chart-sep' }, '·'),
+          h('span', null, t('feedAverage', { avg: average }))
+        ),
+        h('svg', {
+          viewBox: '0 0 ' + w + ' ' + height,
+          width: '100%',
+          height,
+          role: 'img',
+          'aria-label': t('feedAmountTrend') + ' · ' + dayHeading(dayKey, t, lang) + ' · ' + t('feedCount', { n: count }),
+          style: { display: 'block' },
+        },
+          tickValues.map((tick, index) => h('g', { key: 'y' + index },
+            h('line', {
+              x1: margin.left, x2: w - margin.right, y1: yOf(tick), y2: yOf(tick),
+              style: { stroke: 'var(--dsw-alias-border-l1)' },
+              strokeDasharray: index === 0 ? '0' : '3 4',
+            }),
+            h('text', {
+              x: margin.left - 6, y: yOf(tick) + 3, textAnchor: 'end',
+              style: { fill: 'var(--dsw-alias-label-tertiary)', fontSize: '10px' },
+            }, String(Math.round(tick)))
+          )),
+          h('path', { d: line, style: { fill: 'none', stroke: SERIES_PRIMARY }, strokeWidth: 2, strokeLinejoin: 'round', strokeLinecap: 'round' }),
+          points.map((point, index) => h('g', { key: 'p' + index },
+            h('circle', {
+              cx: point.x,
+              cy: point.y,
+              r: index === points.length - 1 ? 4 : 3,
+              style: { fill: 'var(--dsw-alias-bg-layer-1)', stroke: SERIES_PRIMARY },
+              strokeWidth: 2,
+            }, h('title', null, point.title)),
+            showValue(index) ? h('text', {
+              x: point.x,
+              y: Math.max(10, point.y - 9),
+              textAnchor: 'middle',
+              style: { fill: 'var(--dsw-alias-label-secondary)', fontSize: '9px', fontWeight: 600 },
+            }, String(point.amount)) : null,
+            index % every === 0 || index === points.length - 1 ? h('text', {
+              x: point.x,
+              y: height - 8,
+              textAnchor: index === 0 ? 'start' : index === points.length - 1 ? 'end' : 'middle',
+              style: { fill: 'var(--dsw-alias-label-tertiary)', fontSize: '9px' },
+            }, point.label) : null
+          ))
+        )
+      )
+    }
+
     function DiaperBars({ days, t }) {
       const [ref, width] = useElementWidth()
       const totals = days.map(day => day.pee + day.poop)
@@ -1715,7 +1845,7 @@ window.__ModuleLoader__.load({
 
     // ───────────────────────────── 趋势 ─────────────────────────────
 
-    function TrendsTab({ data, t }) {
+    function TrendsTab({ data, t, lang }) {
       const [range, setRange] = React.useState(7)
       const days = buildDays(data.entries, range)
       const weights = data.entries.filter(entry => entry.kind === 'weight')
@@ -1757,6 +1887,10 @@ window.__ModuleLoader__.load({
               h(Swatch, { key: 'f', color: SERIES_SECONDARY, label: t('formulaShort') }),
             ],
           }, h(MilkBars, { days, t })),
+          h(ChartCard, {
+            title: t('feedAmountTrend'),
+            hint: t('feedAmountHint'),
+          }, h(FeedAmountChart, { entries: data.entries, t, lang })),
           h(ChartCard, {
             title: t('diaperTrend'),
             hint: t('diaperHint'),
@@ -2581,6 +2715,11 @@ window.__ModuleLoader__.load({
 .bt-chart-hint { font-size: 11px; line-height: 16px; color: var(--dsw-alias-label-tertiary); }
 .bt-chart { width: 100%; min-height: 120px; }
 .bt-chart-summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; margin-bottom: 2px; font-size: 11px; line-height: 16px; color: var(--dsw-alias-label-secondary); }
+.bt-day-nav { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.bt-day-button { flex: none; width: 26px; height: 26px; padding: 0; border: 0.5px solid var(--dsw-alias-border-l1); border-radius: 999px; background: transparent; color: var(--dsw-alias-label-secondary); font: inherit; font-size: 16px; line-height: 1; cursor: pointer; }
+.bt-day-button:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); }
+.bt-day-button:disabled { opacity: 0.35; cursor: default; }
+.bt-day-label { font-size: 12px; color: var(--dsw-alias-label-primary); }
 .bt-chart-summary b { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--dsw-alias-label-primary); }
 .bt-chart-sep { color: var(--dsw-alias-label-tertiary); margin: 0 2px; }
 .bt-legend { display: flex; flex-wrap: wrap; gap: 10px; }
