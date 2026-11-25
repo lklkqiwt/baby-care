@@ -110,6 +110,8 @@ window.__ModuleLoader__.load({
         byPeriod: '按时段',
         todayFeedTotal: '共 {total} ml',
         todayRecords: '今日记录',
+        todayFeedAmount: '今日每次奶量',
+        todayFeedHint: '按时间顺序看今天每一顿的奶量（不含亲喂）',
         noRecordsToday: '今天还没有记录',
         noRecordsHint: '用左侧表单记下第一次喂奶，趋势会在这里慢慢长出来。',
         noData: '暂无数据',
@@ -256,6 +258,8 @@ window.__ModuleLoader__.load({
         byPeriod: 'By time of day',
         todayFeedTotal: '{total} ml total',
         todayRecords: 'Today',
+        todayFeedAmount: 'Today’s feeds',
+        todayFeedHint: 'Milk volume of each feeding today in time order (nursing excluded)',
         noRecordsToday: 'No records today',
         noRecordsHint: 'Log the first feeding on the left; trends grow from here.',
         noData: 'No data',
@@ -1100,10 +1104,11 @@ window.__ModuleLoader__.load({
       )
     }
 
-    function FeedAmountChart({ entries, t, lang }) {
-      const [dayKey, setDayKey] = React.useState(() => dateKeyOf(new Date()))
+    function FeedAmountChart({ entries, t, lang, todayOnly }) {
+      const [selectedDay, setSelectedDay] = React.useState(() => dateKeyOf(new Date()))
       const [ref, width] = useElementWidth()
       const todayKey = dateKeyOf(new Date())
+      const dayKey = todayOnly ? todayKey : selectedDay
       const isToday = dayKey === todayKey
       const feeds = entries
         .filter(entry => entry.kind === 'feed' && dateKeyOf(entry.at) === dayKey && entry.breastMl + entry.formulaMl > 0)
@@ -1112,9 +1117,9 @@ window.__ModuleLoader__.load({
         const [year, month, day] = dayKey.split('-').map(Number)
         const date = new Date(year, month - 1, day)
         date.setDate(date.getDate() + delta)
-        setDayKey(dateKeyOf(date))
+        setSelectedDay(dateKeyOf(date))
       }
-      const selector = h('div', { className: 'bt-day-nav' },
+      const selector = todayOnly ? null : h('div', { className: 'bt-day-nav' },
         h('button', { type: 'button', className: 'bt-day-button', 'aria-label': t('previousDay'), onClick: () => shift(-1) }, '‹'),
         h('span', { className: 'bt-day-label' }, dayHeading(dayKey, t, lang)),
         h('button', {
@@ -1124,7 +1129,7 @@ window.__ModuleLoader__.load({
           disabled: isToday,
           onClick: () => shift(1),
         }, '›'),
-        isToday ? null : h('button', { type: 'button', className: 'bt-link', onClick: () => setDayKey(todayKey) }, t('dayToday'))
+        isToday ? null : h('button', { type: 'button', className: 'bt-link', onClick: () => setSelectedDay(todayKey) }, t('dayToday'))
       )
       if (feeds.length === 0) {
         return h('div', { ref, className: 'bt-chart' }, selector, h(Empty, { text: t('noFeedAmount') }))
@@ -1739,8 +1744,6 @@ window.__ModuleLoader__.load({
       const heights = data.entries.filter(entry => entry.kind === 'height').sort((a, b) => (a.at < b.at ? 1 : -1))
       const latestHeight = heights[0]
       const previousHeight = heights[1]
-      const buckets = periodBuckets(today)
-      const maxBucket = Math.max(1, ...buckets.map(bucket => bucket.total))
       const supplements = today.filter(entry => entry.kind === 'supplement')
       const milkFoot = []
       if (milk.breast > 0 || milk.formula > 0) {
@@ -1822,21 +1825,11 @@ window.__ModuleLoader__.load({
           ),
           h('section', { className: 'bt-section' },
             h('div', { className: 'bt-section-head' },
-              h('h3', { className: 'bt-section-title' }, t('byPeriod')),
-              h('span', { className: 'bt-section-meta' }, t('todayFeedTotal', { total: milk.total }))
+              h('h3', { className: 'bt-section-title' }, t('todayFeedAmount')),
+              h('span', { className: 'bt-section-meta' }, t('todayFeedHint'))
             ),
-            h('ul', { className: 'bt-periods' },
-              buckets.map(bucket => h('li', { key: bucket.label, className: 'bt-period' },
-                h('span', { className: 'bt-period-label' }, bucket.label),
-                h('span', { className: 'bt-period-track' },
-                  h('span', {
-                    className: 'bt-period-fill',
-                    style: { width: (bucket.total > 0 ? Math.max(2, (bucket.total / maxBucket) * 100) : 0) + '%' },
-                  })
-                ),
-                h('span', { className: 'bt-period-value' },
-                  bucket.total > 0 ? bucket.total + ' ml · ' + bucket.count + ' ' + t('times') : t('noDataShort'))
-              ))
+            h('div', { className: 'bt-chart-card' },
+              h(FeedAmountChart, { entries: data.entries, t, lang, todayOnly: true })
             )
           ),
           h('section', { className: 'bt-section' },
