@@ -1156,9 +1156,10 @@ window.__ModuleLoader__.load({
       const sum = amounts.reduce((total, amount) => total + amount, 0)
       const average = Math.round(sum / count)
       const tickValues = [0, top / 2, top]
-      const every = Math.max(1, Math.ceil(count / 8))
-      const valueEvery = Math.max(1, Math.ceil(count / 12))
-      const showValue = index => count <= 12 || index % valueEvery === 0 || index === count - 1
+      // 一天通常 8–15 次：20 次以内每次奶量和时间都标出来，更多时才抽稀。
+      const every = Math.max(1, Math.ceil(count / 14))
+      const valueEvery = Math.max(1, Math.ceil(count / 20))
+      const showValue = index => count <= 20 || index % valueEvery === 0 || index === count - 1
 
       return h('div', { ref, className: 'bt-chart' },
         selector,
