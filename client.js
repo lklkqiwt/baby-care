@@ -123,7 +123,9 @@ window.__ModuleLoader__.load({
         diaperTrend: '每日尿布',
         periodTrend: '喂养时段分布',
         supplementTrend: '补充剂打卡',
-        weightHint: '每次称重都会连成一条成长曲线',
+        weightHint: '同一天多次称重取平均值，再连成成长曲线',
+        weightDays: '共 {n} 天',
+        weightDailyAverage: '当日 {n} 次平均',
         milkHint: '母乳 + 奶粉按天叠加；亲喂按分钟单独记录，不计入 ml',
         feedAmountTrend: '每次奶量',
         feedAmountHint: '当天每次喂养的奶量折线（不含亲喂）；青绿虚线为当天平均，可切换日期',
@@ -271,7 +273,9 @@ window.__ModuleLoader__.load({
         diaperTrend: 'Daily diapers',
         periodTrend: 'Feeding by time of day',
         supplementTrend: 'Supplement check-ins',
-        weightHint: 'Every weigh-in joins the growth curve',
+        weightHint: 'Multiple weigh-ins on one day are averaged into the curve',
+        weightDays: '{n} days',
+        weightDailyAverage: 'avg of {n} that day',
         milkHint: 'Breast milk + formula stacked per day; nursing minutes are tracked separately',
         feedAmountTrend: 'Per-feed amount',
         feedAmountHint: 'Milk volume of each feeding that day (nursing excluded); the teal dashed line is the daily average',
@@ -521,6 +525,25 @@ window.__ModuleLoader__.load({
         count += 1
       }
       return { breast, formula, total: breast + formula, count, nurseMin, nurseCount }
+    }
+
+    /** 体重按本地日聚合：同一天多次称重取平均值；x 轴用当天中午，一天一个点。 */
+    function dailyWeightPoints(entries) {
+      const byDay = new Map()
+      for (const entry of entries) {
+        if (entry.kind !== 'weight') continue
+        const key = dateKeyOf(entry.at)
+        if (!byDay.has(key)) byDay.set(key, [])
+        byDay.get(key).push(entry)
+      }
+      const points = []
+      for (const [key, list] of byDay) {
+        const [year, month, day] = key.split('-').map(Number)
+        const at = new Date(year, month - 1, day, 12).toISOString()
+        const grams = Math.round(list.reduce((sum, entry) => sum + entry.grams, 0) / list.length)
+        points.push({ id: key, at, grams, count: list.length })
+      }
+      return points.sort((a, b) => (a.at < b.at ? -1 : 1))
     }
 
     function diaperTotals(entries) {
@@ -858,12 +881,12 @@ window.__ModuleLoader__.load({
       )
     }
 
-    function GrowthChart({ entries, t, valueOf, formatValue, unit, summaryLabel, title, minPad, color, gradientId }) {
+    function GrowthChart({ entries, t, valueOf, formatValue, unit, summaryLabel, title, minPad, color, gradientId, countLabel }) {
       const [ref, width] = useElementWidth()
       const points = React.useMemo(() => entries
         .slice()
         .sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0))
-        .map(entry => ({ time: Date.parse(entry.at), value: valueOf(entry), at: entry.at })), [entries, valueOf])
+        .map(entry => ({ time: Date.parse(entry.at), value: valueOf(entry), at: entry.at, tooltip: entry.tooltip })), [entries, valueOf])
 
       if (points.length === 0) {
         return h('div', { ref, className: 'bt-chart' }, h(Empty, { text: t('noData') }))
@@ -909,7 +932,7 @@ window.__ModuleLoader__.load({
           h('span', null, summaryLabel),
           h('b', null, formatValue(latestPoint.value) + ' ' + unit),
           h('span', { className: 'bt-chart-sep' }, '·'),
-          h('span', null, t('weightRecords', { n: points.length }))
+          h('span', null, countLabel ? countLabel(points.length) : t('weightRecords', { n: points.length }))
         ),
         h('svg', { viewBox: '0 0 ' + w + ' ' + height, width: '100%', height, role: 'img', 'aria-label': chartLabel, style: { display: 'block' } },
           h('defs', null,
@@ -954,7 +977,7 @@ window.__ModuleLoader__.load({
                 r: index === points.length - 1 ? 4 : 3,
                 style: { fill: 'var(--dsw-alias-bg-layer-1)', stroke: color },
                 strokeWidth: 2,
-              }, h('title', null, formatValue(point.value) + ' ' + unit + ' · ' + dayShortLabel(new Date(point.time), 'zh'))),
+              }, h('title', null, point.tooltip || (formatValue(point.value) + ' ' + unit + ' · ' + dayShortLabel(new Date(point.time), 'zh')))),
               h('text', {
                 x: xOf(point.time),
                 y: labelY,
@@ -968,8 +991,13 @@ window.__ModuleLoader__.load({
     }
 
     function WeightChart({ entries, t }) {
+      const days = dailyWeightPoints(entries).map(point => ({
+        ...point,
+        tooltip: formatKg(point.grams) + ' kg · ' + dayShortLabel(new Date(point.at), 'zh')
+          + (point.count > 1 ? ' · ' + t('weightDailyAverage', { n: point.count }) : ''),
+      }))
       return h(GrowthChart, {
-        entries, t,
+        entries: days, t,
         valueOf: entry => entry.grams,
         formatValue: formatKg,
         unit: 'kg',
@@ -978,6 +1006,7 @@ window.__ModuleLoader__.load({
         minPad: 80,
         color: SERIES_PRIMARY,
         gradientId: 'bt-weight-fill',
+        countLabel: n => t('weightDays', { n }),
       })
     }
 
@@ -1738,9 +1767,9 @@ window.__ModuleLoader__.load({
         .filter(entry => entry.kind === 'feed')
         .sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0))
       const lastFeed = allFeeds.length > 0 ? allFeeds[0] : null
-      const weights = data.entries.filter(entry => entry.kind === 'weight').sort((a, b) => (a.at < b.at ? 1 : -1))
-      const latest = weights[0]
-      const previous = weights[1]
+      const weightDays = dailyWeightPoints(data.entries)
+      const latest = weightDays[weightDays.length - 1]
+      const previous = weightDays[weightDays.length - 2]
       const heights = data.entries.filter(entry => entry.kind === 'height').sort((a, b) => (a.at < b.at ? 1 : -1))
       const latestHeight = heights[0]
       const previousHeight = heights[1]
@@ -2241,7 +2270,9 @@ window.__ModuleLoader__.load({
             diaper.pee,
             diaper.poop,
             diaper.pee + diaper.poop,
-            weights.length > 0 ? Number(formatKg(weights[weights.length - 1].grams)) : null,
+            weights.length > 0
+              ? Number(formatKg(Math.round(weights.reduce((sum, entry) => sum + entry.grams, 0) / weights.length)))
+              : null,
             heights.length > 0 ? Number(formatCm(heights[heights.length - 1].mm)) : null,
             supplements.filter(entry => entry.item === 'd3').length,
             supplements.filter(entry => entry.item === 'probiotic').length,
