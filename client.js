@@ -13,6 +13,7 @@ window.__ModuleLoader__.load({
 
     const ROUTE = 'api/baby-diary'
     const NS = 'babyTracker'
+    const PLUGIN_VERSION = '1.1.0'
     const START = { data: null, phase: 'idle', error: null, open: false, tab: 'today', editing: null, saving: false, notice: null, loadedAt: 0, tick: 0, dirty: false }
 
     // ───────────────────────────── 文案 ─────────────────────────────
@@ -164,7 +165,7 @@ window.__ModuleLoader__.load({
         importPartial: '已导入 {imported} 条，忽略 {skipped} 条无效或重复记录',
         importFailed: '文件格式不正确',
         settingsAbout: '关于',
-        aboutText: '宝宝记录 · 体重、喂奶（母乳/奶粉）、大小便、维生素D3 与益生菌，按时段统计并生成趋势图。',
+        aboutText: '宝宝记录 · 体重、身高、喂奶（母乳/奶粉/亲喂）、大小便、维生素D3 与益生菌，含趋势图和 Excel 导出。',
         justNow: '刚刚',
         notRecorded: '未记录',
       },
@@ -314,7 +315,7 @@ window.__ModuleLoader__.load({
         importPartial: 'Imported {imported}; ignored {skipped} invalid or duplicate records',
         importFailed: 'That file is not a valid export',
         settingsAbout: 'About',
-        aboutText: 'Baby log: weight, feeding (breast/formula), diapers, vitamin D3 and probiotic times, with by-time-of-day totals and trend charts.',
+        aboutText: 'Baby log: weight, height, feedings (breast/formula/nursing), diapers, vitamin D3 and probiotics, with trend charts and Excel export.',
         justNow: 'just now',
         notRecorded: 'not recorded',
       },
@@ -2473,7 +2474,8 @@ window.__ModuleLoader__.load({
         ),
         h('section', { className: 'bt-settings-group' },
           h('h3', { className: 'bt-settings-title' }, t('settingsAbout')),
-          h('p', { className: 'bt-hint' }, t('aboutText'))
+          h('p', { className: 'bt-hint' }, t('aboutText')),
+          h('p', { className: 'bt-mono' }, 'v' + PLUGIN_VERSION)
         )
       )
     }

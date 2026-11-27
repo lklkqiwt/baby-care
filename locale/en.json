@@ -1,7 +1,7 @@
 {
   "meta": {
     "title": "Baby log",
-    "description": "Track a baby's weight, height, feedings (breast milk and formula ml, plus nursing minutes and side), pee and poop counts, and the times vitamin D3 and probiotics were given. Click the bottle icon beside Settings at the bottom of the sidebar to open it: quick entry, totals by time of day, trend charts, history, and JSON export or import. Records are written by the DSH host to ~/.dsh/baby-diary/data.json, so reloading the page, clearing site data, or changing the browser address does not lose them.",
+    "description": "Track a baby's weight, height, feedings (breast milk and formula ml, plus nursing minutes and side), pee and poop counts, and the times vitamin D3 and probiotics were given. Click the bottle icon beside Settings at the bottom of the sidebar to open it: quick entry, per-feed trend charts, history, and JSON export or import. Records are written by the DSH host to ~/.dsh/baby-diary/data.json, so reloading the page, clearing site data, or changing the browser address does not lose them.",
     "detail": "docs/DETAIL.md"
   }
 }

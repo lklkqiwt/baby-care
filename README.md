@@ -42,6 +42,31 @@ Plugins → Add plugin → 选择本目录（本地目录安装）
 安装后**完全退出并重新打开 DSH**，让 Host 半与浏览器端都加载最新代码；侧栏底部
 （设置按钮旁）出现奶瓶图标即可使用。
 
+## 版本与更新
+
+当前版本 **1.1.0**，可在插件「设置 → 关于」底部看到版本号。
+
+为什么其他位置“检测不到更新”：
+
+- 从 GitHub 安装时，profile 的 `package.json` 会写成 `github:lklkqiwt/baby-care`，pnpm 会把它**锁定到安装时的那个 commit**；DSH 启动时不会去 GitHub 拉新提交，也没有“检查更新”这一动作。
+- 插件没有发布到 npm，Plugin Manager 无法像 npm 包那样比较版本号/自动升级。
+- 如果 `package.json` 的 `version` 一直不变，即使重新安装，版本看起来也还是旧的。
+- Host 半的模块在进程内只加载一次，更新后必须**完全重启 DSH**，只刷新页面不够。
+
+更新其他安装的步骤：
+
+1. 本项目里把 `package.json` 的 `version` 递增（本次已到 `1.1.0`），提交并打 tag：
+   ```bash
+   git tag v1.1.0
+   git push
+   git push origin v1.1.0
+   ```
+2. 在另一处 DSH 的 **Plugins** 里移除旧的 Baby log。
+3. 重新安装：`github:lklkqiwt/baby-care`，或锁定 tag 的 `github:lklkqiwt/baby-care#v1.1.0`。
+4. **Cmd+Q 完全退出并重开 DSH**，到「设置 → 关于」确认版本号。
+
+如果多台机器共用同一个 iCloud 目录，更简单的方式是从该**本地目录**安装（profile 里会写成 `link:/...`）；之后改文件刷新页面即可，Host 半改动再重启一次。
+
 数据通道是 Connection 的精确 Fetch 路由 `/api/baby-diary`（`ctx.connection.fetch.register`
 注册），`/api` 前缀的挂载与浏览器鉴权由 Connection 负责，只有已认证的浏览器所有者
 可以访问；浏览器端与桌面壳都通过 Connection 的传输层发送 `api/baby-diary` 请求。
